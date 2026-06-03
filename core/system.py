@@ -65,9 +65,11 @@ class LiteraturePushSystemV2:
         self.data_dir = data_dir
         self.push_engine = PersonalizedPushEngine(self.data_dir)
         self.analyzer = OptimizedAnalyzer(
-            api_key=os.getenv("DEEPSEEK_API_KEY"),
-            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+            api_key=os.getenv("API_KEY") or os.getenv("DEEPSEEK_API_KEY"),
+            base_url=os.getenv("API_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL"),
             cache=self.cache,
+            provider=os.getenv("API_PROVIDER", "deepseek"),
+            model=os.getenv("MODEL"),
         )
         self.analysis_queue = AnalysisQueue(
             os.path.join(data_dir, "analysis_queue.json")
@@ -94,15 +96,18 @@ class LiteraturePushSystemV2:
 
         # 检查用户是否有自定义API配置（使用解密后的API Key）
         decrypted_api_key = self.user_manager.get_user_api_key(user_id)
-        if decrypted_api_key:
+        has_user_api_config = any(
+            prefs.get(key) for key in ("api_provider", "api_base_url", "model")
+        )
+        if decrypted_api_key or has_user_api_config:
             user_api_config = {
                 "provider": prefs.get("api_provider", "deepseek"),
-                "api_key": decrypted_api_key,
+                "api_key": decrypted_api_key or os.getenv("API_KEY") or os.getenv("DEEPSEEK_API_KEY"),
                 "base_url": prefs.get("api_base_url"),
                 "model": prefs.get("model", "deepseek-chat"),
             }
             return OptimizedAnalyzer(
-                api_key=decrypted_api_key,
+                api_key=user_api_config["api_key"],
                 base_url=prefs.get("api_base_url"),
                 cache=self.cache,
                 user_api_config=user_api_config,

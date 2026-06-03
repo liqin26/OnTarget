@@ -569,14 +569,16 @@ class UserManager:
             
             # 更新API相关设置
             if 'api_provider' in api_settings:
-                prefs['api_provider'] = api_settings['api_provider']
-            if 'api_key' in api_settings and api_settings['api_key']:
+                prefs['api_provider'] = str(api_settings['api_provider'] or 'deepseek').strip()
+            if api_settings.get('clear_api_key'):
+                prefs.pop('api_key', None)
+            elif 'api_key' in api_settings and api_settings['api_key']:
                 # 加密存储API Key
-                prefs['api_key'] = encryption.encrypt(api_settings['api_key'])
+                prefs['api_key'] = encryption.encrypt(str(api_settings['api_key']).strip())
             if 'api_base_url' in api_settings:
-                prefs['api_base_url'] = api_settings['api_base_url']
+                prefs['api_base_url'] = str(api_settings['api_base_url'] or '').strip().rstrip('/')
             if 'model' in api_settings:
-                prefs['model'] = api_settings['model']
+                prefs['model'] = str(api_settings['model'] or '').strip()
             
             # 先添加到 pending 列表，这样 commit 才会保存
             db.add(user)

@@ -21,6 +21,13 @@ API_PROVIDERS = {
         'endpoint': '/v1/chat/completions',
         'auth_type': 'bearer'
     },
+    'custom': {
+        'name': 'Custom OpenAI-compatible API',
+        'default_model': 'gpt-3.5-turbo',
+        'default_base_url': '',
+        'endpoint': '/v1/chat/completions',
+        'auth_type': 'bearer'
+    },
     'openai': {
         'name': 'OpenAI',
         'default_model': 'gpt-3.5-turbo',
@@ -134,20 +141,35 @@ class OptimizedAnalyzer:
             user_api_config: 用户自定义API配置
         """
         # 如果用户有自定义配置，优先使用
-        if user_api_config:
-            self.provider = user_api_config.get('provider', 'deepseek')
-            self.api_key = user_api_config.get('api_key') or api_key or os.getenv('DEEPSEEK_API_KEY')
-            self.base_url = user_api_config.get('base_url') or base_url or os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
-            self.model = user_api_config.get('model') or model or 'deepseek-chat'
-        else:
-            self.provider = provider
-            self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY')
-            self.base_url = base_url or os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
-            self.model = model or 'deepseek-chat'
+        user_api_config = user_api_config or {}
+        self.provider = user_api_config.get('provider') or provider or os.getenv('API_PROVIDER', 'deepseek')
+        if self.provider not in API_PROVIDERS:
+            self.provider = 'custom'
         
         # 获取供应商配置
         provider_config = API_PROVIDERS.get(self.provider, API_PROVIDERS['deepseek'])
         self.endpoint = provider_config.get('endpoint', '/v1/chat/completions')
+        self.api_key = (
+            user_api_config.get('api_key')
+            or api_key
+            or os.getenv('API_KEY')
+            or os.getenv('DEEPSEEK_API_KEY')
+        )
+        self.base_url = (
+            user_api_config.get('base_url')
+            or base_url
+            or os.getenv('API_BASE_URL')
+            or os.getenv('DEEPSEEK_BASE_URL')
+            or provider_config.get('default_base_url')
+            or ''
+        )
+        self.model = (
+            user_api_config.get('model')
+            or model
+            or os.getenv('MODEL')
+            or provider_config.get('default_model')
+            or 'deepseek-chat'
+        )
         
         self.cache = cache
         
@@ -163,6 +185,30 @@ class OptimizedAnalyzer:
     def _get_provider_config(self) -> Dict:
         """获取当前供应商配置"""
         return API_PROVIDERS.get(self.provider, API_PROVIDERS['deepseek'])
+
+    def _build_url(self, endpoint: Optional[str] = None) -> str:
+        """Build API URLs while allowing base URLs with or without version paths."""
+        base_url = (self.base_url or '').rstrip('/')
+        endpoint = endpoint or self.endpoint or ''
+        if not endpoint:
+            return base_url
+
+        endpoint = endpoint if endpoint.startswith('/') else f'/{endpoint}'
+        version_prefixes = (
+            '/api/paas/v4',
+            '/api/v1',
+            '/api/v3',
+            '/v1beta',
+            '/v4.0',
+            '/v2',
+            '/v1',
+        )
+        for prefix in version_prefixes:
+            if base_url.endswith(prefix) and endpoint.startswith(f'{prefix}/'):
+                endpoint = endpoint[len(prefix):]
+                break
+
+        return f'{base_url}{endpoint}'
     
     def analyze_paper(self, title: str, abstract: str, 
                      force_refresh: bool = False) -> Dict[str, str]:
@@ -264,7 +310,7 @@ class OptimizedAnalyzer:
                 else:
                     # 默认使用 OpenAI 兼容格式
                     response = requests.post(
-                        f"{self.base_url}/v1/chat/completions",
+                        self._build_url('/v1/chat/completions'),
                         headers={
                             "Authorization": f"Bearer {self.api_key}",
                             "Content-Type": "application/json"
@@ -342,7 +388,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}/v1/messages",
+            self._build_url('/v1/messages'),
             headers=headers,
             json=body,
             timeout=60
@@ -355,7 +401,7 @@ class OptimizedAnalyzer:
     
     def _call_google_api_content(self, prompt: str) -> str:
         """调用Google Gemini API"""
-        url = f"{self.base_url}/v1beta/models/{self.model}:generateContent"
+        url = self._build_url(f"/v1beta/models/{self.model}:generateContent")
         
         headers = {
             "Content-Type": "application/json"
@@ -406,7 +452,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}{self.endpoint}",
+            self._build_url(),
             headers=headers,
             json=body,
             timeout=60
@@ -435,7 +481,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}{self.endpoint}",
+            self._build_url(),
             headers=headers,
             json=body,
             timeout=60
@@ -464,7 +510,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}{self.endpoint}",
+            self._build_url(),
             headers=headers,
             json=body,
             timeout=60
@@ -493,7 +539,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}{self.endpoint}",
+            self._build_url(),
             headers=headers,
             json=body,
             timeout=60
@@ -522,7 +568,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}{self.endpoint}",
+            self._build_url(),
             headers=headers,
             json=body,
             timeout=60
@@ -570,7 +616,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}{self.endpoint}",
+            self._build_url(),
             headers=headers,
             json=body,
             timeout=60
@@ -598,7 +644,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}{self.endpoint}",
+            self._build_url(),
             headers=headers,
             json=body,
             params={"access_token": self.api_key},
@@ -638,7 +684,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}{self.endpoint}",
+            self._build_url(),
             headers=headers,
             json=body,
             params={"SecretId": self.api_key.split(':')[0], "Signature": "placeholder", "Timestamp": timestamp},
@@ -667,7 +713,7 @@ class OptimizedAnalyzer:
         }
         
         response = requests.post(
-            f"{self.base_url}/v1/messages",
+            self._build_url('/v1/messages'),
             headers=headers,
             json=body,
             timeout=60
@@ -811,7 +857,7 @@ class OptimizedAnalyzer:
         else:
             # 默认使用 OpenAI 兼容格式
             response = requests.post(
-                f"{self.base_url}/v1/chat/completions",
+                self._build_url('/v1/chat/completions'),
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json"

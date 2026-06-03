@@ -32,6 +32,7 @@ class SimpleDatabase:
             try:
                 os.makedirs(db_dir, exist_ok=True)
             except Exception as e:
+                pass
         
         # 连接数据库（会自动创建文件）
         try:

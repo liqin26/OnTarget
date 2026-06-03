@@ -606,6 +606,7 @@ def api_get_personalized_papers():
                 if active_group:
                     user_keywords = active_group.get('keywords', [])
         except Exception as e:
+            pass
 
     if not user_keywords:
         return jsonify(
@@ -908,6 +909,16 @@ def api_get_user_settings():
     return jsonify({"success": True, "settings": settings})
 
 
+@app.route("/api/sources/available")
+@login_required
+def api_get_available_sources():
+    """Return literature sources supported by the fetcher."""
+    try:
+        return jsonify({"success": True, "sources": system.fetcher.get_available_sources()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # API: 更新用户设置
 @app.route("/api/user/settings", methods=["PUT"])
 @login_required
@@ -925,12 +936,14 @@ def api_update_user_settings():
         or "api_key" in data
         or "api_base_url" in data
         or "model" in data
+        or "clear_api_key" in data
     ):
         api_settings = {
             "api_provider": data.get("api_provider"),
             "api_key": data.get("api_key"),
             "api_base_url": data.get("api_base_url"),
             "model": data.get("model"),
+            "clear_api_key": data.get("clear_api_key", False),
         }
         result = system.user_manager.save_user_api_settings(user_id, api_settings)
         if not result["success"]:
@@ -961,12 +974,16 @@ def api_update_user_settings():
 @app.route("/api/user/system-api-info")
 def api_get_system_api_info():
     """获取系统默认API配置信息"""
+    default_provider = os.getenv("API_PROVIDER", "deepseek")
+    default_model = os.getenv("MODEL", "deepseek-chat")
+    default_base_url = os.getenv("API_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL", "")
     return jsonify(
         {
             "success": True,
-            "has_system_api": bool(os.getenv("DEEPSEEK_API_KEY")),
-            "default_provider": "deepseek",
-            "default_model": "deepseek-chat",
+            "has_system_api": bool(os.getenv("API_KEY") or os.getenv("DEEPSEEK_API_KEY")),
+            "default_provider": default_provider,
+            "default_model": default_model,
+            "default_base_url": default_base_url,
         }
     )
 
@@ -1011,6 +1028,7 @@ def api_change_password():
                     print(
                     )
         except Exception as e:
+            pass
 
     if not user_keywords:
         return jsonify(

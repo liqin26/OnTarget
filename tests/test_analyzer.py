@@ -5,6 +5,9 @@ AI分析测试 - 验证AI分析功能
 
 import sys
 import os
+import gc
+import tempfile
+import uuid
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.cache_manager import SmartCache
@@ -90,12 +93,30 @@ class TestAnalysisCache:
     
     def setup_method(self):
         # 使用内存缓存，避免磁盘操作
-        self.cache = SmartCache(db_path='/tmp/test_cache.db')
+        from models import database
+
+        if database._db_manager:
+            database._db_manager.close()
+            database._db_manager = None
+
+        self.db_path = os.path.join(
+            tempfile.gettempdir(),
+            f"ontarget_test_cache_{uuid.uuid4().hex}.db",
+        )
+        self.cache = SmartCache(db_path=self.db_path)
     
     def teardown_method(self):
         # 清理测试数据库
-        import os
-        for f in ['/tmp/test_cache.db', '/tmp/test_cache.db-wal', '/tmp/test_cache.db-shm']:
+        from models import database
+
+        if database._db_manager:
+            database._db_manager.close()
+            database._db_manager = None
+
+        self.cache = None
+        gc.collect()
+
+        for f in [self.db_path, f'{self.db_path}-wal', f'{self.db_path}-shm']:
             if os.path.exists(f):
                 os.remove(f)
     
@@ -179,7 +200,14 @@ class TestAPIProviders:
         
         assert 'deepseek' in API_PROVIDERS
         assert 'endpoint' in API_PROVIDERS['deepseek']
-        assert 'model' in API_PROVIDERS['deepseek']
+        assert 'default_model' in API_PROVIDERS['deepseek']
+
+    def test_custom_provider(self):
+        """Test custom OpenAI-compatible provider config."""
+        from core.analyzer import API_PROVIDERS
+
+        assert 'custom' in API_PROVIDERS
+        assert API_PROVIDERS['custom']['endpoint'] == '/v1/chat/completions'
     
     def test_openai_provider(self):
         """测试OpenAI提供商配置"""
@@ -192,6 +220,19 @@ class TestAPIProviders:
         from core.analyzer import API_PROVIDERS
         
         assert 'anthropic' in API_PROVIDERS
+
+    def test_versioned_base_url_is_not_duplicated(self):
+        """Test URL building with already-versioned API base URLs."""
+        from core.analyzer import OptimizedAnalyzer
+
+        analyzer = OptimizedAnalyzer(
+            api_key='test-key',
+            provider='custom',
+            base_url='https://api.example.com/v1',
+            model='test-model',
+        )
+
+        assert analyzer._build_url('/v1/chat/completions') == 'https://api.example.com/v1/chat/completions'
 
 
 if __name__ == '__main__':
